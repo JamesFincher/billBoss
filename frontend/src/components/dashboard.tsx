@@ -478,17 +478,20 @@ export function DashboardComponent() {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">Personal Finance Dashboard</h1>
-      <div className="flex justify-between items-center mb-4">
+      <h1 className="text-3xl font-bold mb-6 text-center md:text-left">
+        Personal Finance Dashboard
+      </h1>
+      <div className="flex justify-between items-center mb-6">
         <Button
           onClick={() => {
             setCurrentMonth((prevMonth) => addMonths(prevMonth, -1));
           }}
           disabled={loadingBills || loadingTodos || loadingPaychecks}
+          className="hidden sm:flex"
         >
           <ChevronLeft />
         </Button>
-        <h2 className="text-xl font-semibold">
+        <h2 className="text-xl font-semibold text-center flex-1">
           {format(currentMonth, "MMMM yyyy")}
         </h2>
         <Button
@@ -496,475 +499,514 @@ export function DashboardComponent() {
             setCurrentMonth((prevMonth) => addMonths(prevMonth, 1));
           }}
           disabled={loadingBills || loadingTodos || loadingPaychecks}
+          className="hidden sm:flex"
         >
           <ChevronRight />
         </Button>
+        {/* Mobile Navigation Buttons */}
+        <div className="flex sm:hidden space-x-2">
+          <Button
+            onClick={() => {
+              setCurrentMonth((prevMonth) => addMonths(prevMonth, -1));
+            }}
+            disabled={loadingBills || loadingTodos || loadingPaychecks}
+            size="sm"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => {
+              setCurrentMonth((prevMonth) => addMonths(prevMonth, 1));
+            }}
+            disabled={loadingBills || loadingTodos || loadingPaychecks}
+            size="sm"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
+        <div className="mb-6 p-4 bg-red-100 text-red-700 rounded">
           Error: {error}
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Bills Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Bills</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[200px] mb-4">
-              {loadingBills ? (
-                <p className="text-gray-500">Loading bills...</p>
-              ) : filteredMonthlyBills.length === 0 ? (
-                <p className="text-gray-500">No bills for this month.</p>
-              ) : (
-                filteredMonthlyBills.map((bill: Bill) => (
-                  <div
-                    key={bill.id}
-                    className={`flex justify-between items-center mb-2 ${
-                      bill.status === "skipped" ? "opacity-50" : ""
-                    }`}
-                  >
-                    {editingBill && editingBill.id === bill.id ? (
-                      <>
-                        <Input
-                          value={editingBill.name}
-                          onChange={(e) =>
-                            setEditingBill({
-                              ...editingBill,
-                              name: e.target.value,
-                            })
-                          }
-                          className="w-1/4 mr-2"
-                          placeholder="Bill Name"
-                        />
-                        <Input
-                          type="number"
-                          value={editingBill.amount}
-                          onChange={(e) =>
-                            setEditingBill({
-                              ...editingBill,
-                              amount: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="w-1/6 mr-2"
-                          placeholder="Amount"
-                        />
-                        <Input
-                          type="date"
-                          value={editingBill.due_date}
-                          onChange={(e) =>
-                            setEditingBill({
-                              ...editingBill,
-                              due_date: e.target.value,
-                            })
-                          }
-                          className="w-1/4 mr-2"
-                        />
-                        <Select
-                          value={editingBill.status}
-                          onValueChange={(value) =>
-                            setEditingBill({
-                              ...editingBill,
-                              status: value as Bill["status"],
-                            })
-                          }
-                          className="w-1/6 mr-2"
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="upcoming">Upcoming</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="missed">Missed</SelectItem>
-                            <SelectItem value="skipped">Skipped</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button className="mr-2">Save</Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Update Bill</DialogTitle>
-                              <DialogDescription>
-                                Do you want to update only this bill or all
-                                future occurrences?
-                              </DialogDescription>
-                            </DialogHeader>
-                            <DialogFooter>
-                              <Button
-                                onClick={() => {
-                                  updateBill(bill.id, editingBill, "this");
-                                }}
-                              >
-                                Update This Bill
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  updateBill(bill.id, editingBill, "future");
-                                }}
-                              >
-                                Update All Future Bills
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingBill(null)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex-1">
-                          <span
-                            className={`block ${
-                              bill.status === "skipped" ? "line-through" : ""
-                            }`}
-                          >
-                            {bill.name}
-                          </span>
-                          <span
-                            className={`block ${
-                              bill.status === "skipped" ? "line-through" : ""
-                            }`}
-                          >
-                            ${bill.amount.toFixed(2)}
-                          </span>
-                          <span className="block text-sm text-gray-500">
-                            Due: {format(parseISO(bill.due_date), "MMM dd")}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            checked={bill.is_paid}
-                            onCheckedChange={(checked) =>
-                              updateBill(bill.id, { is_paid: checked }, "this")
+      <div className="grid grid-cols-1 gap-6">
+        {/* Responsive Grid */}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Bills Card */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Bills</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1">
+              <ScrollArea className="h-[200px] mb-4">
+                {loadingBills ? (
+                  <p className="text-gray-500">Loading bills...</p>
+                ) : filteredMonthlyBills.length === 0 ? (
+                  <p className="text-gray-500">No bills for this month.</p>
+                ) : (
+                  filteredMonthlyBills.map((bill: Bill) => (
+                    <div
+                      key={bill.id}
+                      className={`flex justify-between items-center mb-2 ${
+                        bill.status === "skipped" ? "opacity-50" : ""
+                      }`}
+                    >
+                      {editingBill && editingBill.id === bill.id ? (
+                        <>
+                          <Input
+                            value={editingBill.name}
+                            onChange={(e) =>
+                              setEditingBill({
+                                ...editingBill,
+                                name: e.target.value,
+                              })
                             }
-                            disabled={bill.status === "skipped"}
+                            className="w-1/4 mr-2"
+                            placeholder="Bill Name"
                           />
+                          <Input
+                            type="number"
+                            value={editingBill.amount}
+                            onChange={(e) =>
+                              setEditingBill({
+                                ...editingBill,
+                                amount: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-1/6 mr-2"
+                            placeholder="Amount"
+                          />
+                          <Input
+                            type="date"
+                            value={editingBill.due_date}
+                            onChange={(e) =>
+                              setEditingBill({
+                                ...editingBill,
+                                due_date: e.target.value,
+                              })
+                            }
+                            className="w-1/4 mr-2"
+                          />
+                          <Select
+                            value={editingBill.status}
+                            onValueChange={(value) =>
+                              setEditingBill({
+                                ...editingBill,
+                                status: value as Bill["status"],
+                              })
+                            }
+                            className="w-1/6 mr-2"
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="upcoming">Upcoming</SelectItem>
+                              <SelectItem value="completed">
+                                Completed
+                              </SelectItem>
+                              <SelectItem value="missed">Missed</SelectItem>
+                              <SelectItem value="skipped">Skipped</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button className="mr-2">Save</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Update Bill</DialogTitle>
+                                <DialogDescription>
+                                  Do you want to update only this bill or all
+                                  future occurrences?
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                <Button
+                                  onClick={() => {
+                                    updateBill(bill.id, editingBill, "this");
+                                  }}
+                                >
+                                  Update This Bill
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    updateBill(bill.id, editingBill, "future");
+                                  }}
+                                >
+                                  Update All Future Bills
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => setEditingBill(bill)}
+                            onClick={() => setEditingBill(null)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex-1">
+                            <span
+                              className={`block ${
+                                bill.status === "skipped" ? "line-through" : ""
+                              }`}
+                            >
+                              {bill.name}
+                            </span>
+                            <span
+                              className={`block ${
+                                bill.status === "skipped" ? "line-through" : ""
+                              }`}
+                            >
+                              ${bill.amount.toFixed(2)}
+                            </span>
+                            <span className="block text-sm text-gray-500">
+                              Due: {format(parseISO(bill.due_date), "MMM dd")}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              checked={bill.is_paid}
+                              onCheckedChange={(checked) =>
+                                updateBill(
+                                  bill.id,
+                                  { is_paid: checked },
+                                  "this"
+                                )
+                              }
+                              disabled={bill.status === "skipped"}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setEditingBill(bill)}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => skipBill(bill.id)}
+                              disabled={bill.status === "skipped"}
+                            >
+                              <SkipForward className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (bill.status !== "skipped") {
+                                  setBillToDelete(bill);
+                                  setShowDeleteDialog(true);
+                                }
+                              }}
+                              disabled={bill.status === "skipped"}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </ScrollArea>
+              <div className="flex flex-col gap-2 mt-auto">
+                <Input
+                  placeholder="Bill Name"
+                  value={newBill.name}
+                  onChange={(e) =>
+                    setNewBill({ ...newBill, name: e.target.value })
+                  }
+                />
+                <Input
+                  type="number"
+                  placeholder="Amount"
+                  value={newBill.amount}
+                  onChange={(e) =>
+                    setNewBill({ ...newBill, amount: e.target.value })
+                  }
+                />
+                <Input
+                  type="date"
+                  value={newBill.dueDate}
+                  onChange={(e) =>
+                    setNewBill({ ...newBill, dueDate: e.target.value })
+                  }
+                />
+                <Select
+                  value={newBill.recurrence}
+                  onValueChange={(value) =>
+                    setNewBill({ ...newBill, recurrence: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Recurrence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={addBill}
+                  disabled={
+                    !newBill.name ||
+                    !newBill.amount ||
+                    !newBill.dueDate ||
+                    loadingBills
+                  }
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Bill
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Todo List Card */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Todo List</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1">
+              <ScrollArea className="h-[200px] mb-4">
+                {loadingTodos ? (
+                  <p className="text-gray-500">Loading todos...</p>
+                ) : monthlyTodos.length === 0 ? (
+                  <p className="text-gray-500">No todos for this month.</p>
+                ) : (
+                  monthlyTodos.map((todo: Todo) => (
+                    <div
+                      key={todo.id}
+                      className={`flex items-center mb-2 ${
+                        todo.completed ? "opacity-50" : ""
+                      }`}
+                    >
+                      {editingTodo && editingTodo.id === todo.id ? (
+                        <>
+                          <Input
+                            value={editingTodo.task}
+                            onChange={(e) =>
+                              setEditingTodo({
+                                ...editingTodo,
+                                task: e.target.value,
+                              })
+                            }
+                            className="w-2/5 mr-2"
+                            placeholder="Task"
+                          />
+                          <Input
+                            type="date"
+                            value={editingTodo.dueDate}
+                            onChange={(e) =>
+                              setEditingTodo({
+                                ...editingTodo,
+                                dueDate: e.target.value,
+                              })
+                            }
+                            className="w-1/3 mr-2"
+                          />
+                          <Button
+                            onClick={() => {
+                              updateTodo(todo.id, editingTodo);
+                            }}
+                            className="mr-2"
+                            disabled={
+                              !editingTodo.task ||
+                              !editingTodo.dueDate ||
+                              loadingTodos
+                            }
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingTodo(null)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Switch
+                            checked={todo.completed}
+                            onCheckedChange={(checked) =>
+                              updateTodo(todo.id, { completed: checked })
+                            }
+                            className="mr-2"
+                            disabled={loadingTodos}
+                          />
+                          <div className="flex-1">
+                            <span
+                              className={`block ${
+                                todo.completed ? "line-through" : ""
+                              }`}
+                            >
+                              {todo.task}
+                            </span>
+                            <span className="block text-sm text-gray-500">
+                              Due: {format(parseISO(todo.dueDate), "MMM dd")}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingTodo(todo)}
+                            className="mr-2"
+                            disabled={loadingTodos}
                           >
                             <Edit2 className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => skipBill(bill.id)}
-                            disabled={bill.status === "skipped"}
-                          >
-                            <SkipForward className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              if (bill.status !== "skipped") {
-                                setBillToDelete(bill);
-                                setShowDeleteDialog(true);
-                              }
-                            }}
-                            disabled={bill.status === "skipped"}
+                            onClick={() => deleteTodo(todo.id)}
+                            disabled={loadingTodos}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-            <div className="flex flex-col gap-2">
-              <Input
-                placeholder="Bill Name"
-                value={newBill.name}
-                onChange={(e) =>
-                  setNewBill({ ...newBill, name: e.target.value })
-                }
-              />
-              <Input
-                type="number"
-                placeholder="Amount"
-                value={newBill.amount}
-                onChange={(e) =>
-                  setNewBill({ ...newBill, amount: e.target.value })
-                }
-              />
-              <Input
-                type="date"
-                value={newBill.dueDate}
-                onChange={(e) =>
-                  setNewBill({ ...newBill, dueDate: e.target.value })
-                }
-              />
-              <Select
-                value={newBill.recurrence}
-                onValueChange={(value) =>
-                  setNewBill({ ...newBill, recurrence: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Recurrence" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="yearly">Yearly</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={addBill}
-                disabled={
-                  !newBill.name ||
-                  !newBill.amount ||
-                  !newBill.dueDate ||
-                  loadingBills
-                }
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Bill
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </ScrollArea>
+              <div className="flex flex-col gap-2 mt-auto">
+                <Input
+                  placeholder="New Todo"
+                  value={newTodo.task}
+                  onChange={(e) =>
+                    setNewTodo({ ...newTodo, task: e.target.value })
+                  }
+                />
+                <Input
+                  type="date"
+                  value={newTodo.dueDate}
+                  onChange={(e) =>
+                    setNewTodo({ ...newTodo, dueDate: e.target.value })
+                  }
+                />
+                <Button
+                  onClick={addTodo}
+                  disabled={!newTodo.task || !newTodo.dueDate || loadingTodos}
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Todo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Todo List Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Todo List</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[200px] mb-4">
-              {loadingTodos ? (
-                <p className="text-gray-500">Loading todos...</p>
-              ) : monthlyTodos.length === 0 ? (
-                <p className="text-gray-500">No todos for this month.</p>
-              ) : (
-                monthlyTodos.map((todo: Todo) => (
-                  <div
-                    key={todo.id}
-                    className={`flex items-center mb-2 ${
-                      todo.completed ? "opacity-50" : ""
-                    }`}
-                  >
-                    {editingTodo && editingTodo.id === todo.id ? (
-                      <>
-                        <Input
-                          value={editingTodo.task}
-                          onChange={(e) =>
-                            setEditingTodo({
-                              ...editingTodo,
-                              task: e.target.value,
-                            })
-                          }
-                          className="w-2/5 mr-2"
-                          placeholder="Task"
-                        />
-                        <Input
-                          type="date"
-                          value={editingTodo.dueDate}
-                          onChange={(e) =>
-                            setEditingTodo({
-                              ...editingTodo,
-                              dueDate: e.target.value,
-                            })
-                          }
-                          className="w-1/3 mr-2"
-                        />
-                        <Button
-                          onClick={() => {
-                            updateTodo(todo.id, editingTodo);
-                          }}
-                          className="mr-2"
-                          disabled={
-                            !editingTodo.task ||
-                            !editingTodo.dueDate ||
-                            loadingTodos
-                          }
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingTodo(null)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Switch
-                          checked={todo.completed}
-                          onCheckedChange={(checked) =>
-                            updateTodo(todo.id, { completed: checked })
-                          }
-                          className="mr-2"
-                          disabled={loadingTodos}
-                        />
-                        <div className="flex-1">
-                          <span
-                            className={`block ${
-                              todo.completed ? "line-through" : ""
-                            }`}
-                          >
-                            {todo.task}
-                          </span>
-                          <span className="block text-sm text-gray-500">
-                            Due: {format(parseISO(todo.dueDate), "MMM dd")}
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingTodo(todo)}
-                          className="mr-2"
-                          disabled={loadingTodos}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteTodo(todo.id)}
-                          disabled={loadingTodos}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-            <div className="flex flex-col gap-2">
-              <Input
-                placeholder="New Todo"
-                value={newTodo.task}
-                onChange={(e) =>
-                  setNewTodo({ ...newTodo, task: e.target.value })
-                }
-              />
-              <Input
-                type="date"
-                value={newTodo.dueDate}
-                onChange={(e) =>
-                  setNewTodo({ ...newTodo, dueDate: e.target.value })
-                }
-              />
-              <Button
-                onClick={addTodo}
-                disabled={!newTodo.task || !newTodo.dueDate || loadingTodos}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Todo
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          {/* Summary Card */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1">
+              <div className="overflow-auto">
+                <h3 className="font-semibold mb-2">
+                  Weekly ({format(weekStart, "MMM dd")} -{" "}
+                  {format(weekEnd, "MMM dd")})
+                </h3>
+                <p className="mb-1">Bills Due: ${weeklyBills.toFixed(2)}</p>
+                <p className="mb-1">Paychecks: ${weeklyPaychecks.toFixed(2)}</p>
+                <p className="mb-4">Balance: ${weeklyBalance.toFixed(2)}</p>
 
-        {/* Summary Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <h3 className="font-semibold mb-2">
-              Weekly ({format(weekStart, "MMM dd")} -{" "}
-              {format(weekEnd, "MMM dd")})
-            </h3>
-            <p>Bills Due: ${weeklyBills.toFixed(2)}</p>
-            <p>Paychecks: ${weeklyPaychecks.toFixed(2)}</p>
-            <p>Balance: ${weeklyBalance.toFixed(2)}</p>
+                <h3 className="font-semibold mb-2">
+                  Monthly ({format(monthStart, "MMM dd")} -{" "}
+                  {format(monthEnd, "MMM dd")})
+                </h3>
+                <p className="mb-1">Total Bills: ${totalBills.toFixed(2)}</p>
+                <p className="mb-1">Unpaid Bills: ${unpaidBills.toFixed(2)}</p>
+                <p className="mb-1">
+                  Total Paychecks: ${totalPaychecks.toFixed(2)}
+                </p>
+                <p className="mb-1">Current Balance: ${balance.toFixed(2)}</p>
+                <p className="mb-1">
+                  Completed Todos: {completedTodos} / {monthlyTodos.length}
+                </p>
+                <p className="mb-1">
+                  Financial Health:{" "}
+                  {balance < 0 ? "Review spending" : "On track"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-            <h3 className="font-semibold mt-4 mb-2">
-              Monthly ({format(monthStart, "MMM dd")} -{" "}
-              {format(monthEnd, "MMM dd")})
-            </h3>
-            <p>Total Bills: ${totalBills.toFixed(2)}</p>
-            <p>Unpaid Bills: ${unpaidBills.toFixed(2)}</p>
-            <p>Total Paychecks: ${totalPaychecks.toFixed(2)}</p>
-            <p>Current Balance: ${balance.toFixed(2)}</p>
-            <p>
-              Completed Todos: {completedTodos} / {monthlyTodos.length}
-            </p>
-            <p>
-              Financial Health: {balance < 0 ? "Review spending" : "On track"}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Paychecks Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Paychecks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[150px] mb-4">
-              {loadingPaychecks ? (
-                <p className="text-gray-500">Loading paychecks...</p>
-              ) : monthlyPaychecks.length === 0 ? (
-                <p className="text-gray-500">No paychecks for this month.</p>
-              ) : (
-                monthlyPaychecks.map((paycheck: Paycheck) => (
-                  <div
-                    key={paycheck.id}
-                    className="flex justify-between items-center mb-2"
-                  >
-                    <span>
-                      {format(parseISO(paycheck.date), "MMM dd, yyyy")}
-                    </span>
-                    <span>${paycheck.amount.toFixed(2)}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deletePaycheck(paycheck.id)}
-                      disabled={loadingPaychecks}
+          {/* Paychecks Card */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Paychecks</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1">
+              <ScrollArea className="h-[150px] mb-4">
+                {loadingPaychecks ? (
+                  <p className="text-gray-500">Loading paychecks...</p>
+                ) : monthlyPaychecks.length === 0 ? (
+                  <p className="text-gray-500">No paychecks for this month.</p>
+                ) : (
+                  monthlyPaychecks.map((paycheck: Paycheck) => (
+                    <div
+                      key={paycheck.id}
+                      className="flex justify-between items-center mb-2"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-            <div className="flex flex-col gap-2">
-              <Input
-                type="number"
-                placeholder="Paycheck Amount"
-                value={newPaycheck.amount}
-                onChange={(e) =>
-                  setNewPaycheck({ ...newPaycheck, amount: e.target.value })
-                }
-              />
-              <Input
-                type="date"
-                value={newPaycheck.date}
-                onChange={(e) =>
-                  setNewPaycheck({ ...newPaycheck, date: e.target.value })
-                }
-              />
-              <Button
-                onClick={addPaycheck}
-                disabled={
-                  !newPaycheck.amount || !newPaycheck.date || loadingPaychecks
-                }
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Paycheck
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                      <span>
+                        {format(parseISO(paycheck.date), "MMM dd, yyyy")}
+                      </span>
+                      <span>${paycheck.amount.toFixed(2)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deletePaycheck(paycheck.id)}
+                        disabled={loadingPaychecks}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </ScrollArea>
+              <div className="flex flex-col gap-2 mt-auto">
+                <Input
+                  type="number"
+                  placeholder="Paycheck Amount"
+                  value={newPaycheck.amount}
+                  onChange={(e) =>
+                    setNewPaycheck({ ...newPaycheck, amount: e.target.value })
+                  }
+                />
+                <Input
+                  type="date"
+                  value={newPaycheck.date}
+                  onChange={(e) =>
+                    setNewPaycheck({ ...newPaycheck, date: e.target.value })
+                  }
+                />
+                <Button
+                  onClick={addPaycheck}
+                  disabled={
+                    !newPaycheck.amount || !newPaycheck.date || loadingPaychecks
+                  }
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Paycheck
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Delete Bill Dialog */}

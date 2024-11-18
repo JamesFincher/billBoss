@@ -1,3 +1,5 @@
+"use client";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { Context } from "hono";
@@ -6,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   parseISO,
   isBefore,
+  isAfter,
   formatISO,
   addWeeks,
   addMonths,
@@ -57,8 +60,12 @@ const app = new Hono<Env>();
 // Enable CORS for all routes
 app.use("*", cors());
 
-// Utility function to handle database queries
-async function queryDB(ctx: Context<Env>, sql: string, params: any[] = []) {
+// Utility function to handle database queries with error handling
+async function queryDB(
+  ctx: Context<Env>,
+  sql: string,
+  params: any[] = []
+): Promise<any> {
   try {
     const result = await ctx.env.D1_DATABASE.prepare(sql)
       .bind(...params)
@@ -81,26 +88,62 @@ async function generateOccurrences(
   ctx: Context<Env>
 ): Promise<BillOccurrence[]> {
   const occurrences: BillOccurrence[] = [];
-  let currentDate = parseISO(bill.dueDate);
+  let currentDate: Date;
+
+  // Validate and parse the bill's dueDate
+  try {
+    currentDate = parseISO(bill.dueDate);
+    if (isNaN(currentDate.getTime())) {
+      throw new Error("Invalid dueDate format");
+    }
+  } catch (error) {
+    console.error(`Invalid dueDate for bill ${bill.id}: ${bill.dueDate}`);
+    // Optionally, you can choose to skip generating occurrences for this bill
+    return occurrences;
+  }
+
   const endDate = addMonths(currentDate, monthsAhead);
 
-  while (isBefore(currentDate, endDate)) {
-    // Skip if the occurrence is on or after deletedFromDate
-    if (
-      bill.deletedFromDate &&
-      !isBefore(currentDate, parseISO(bill.deletedFromDate))
-    ) {
-      break;
+  while (!isAfter(currentDate, endDate)) {
+    // Validate and parse deletedFromDate if it exists
+    if (bill.deletedFromDate) {
+      let deletedFrom: Date;
+      try {
+        deletedFrom = parseISO(bill.deletedFromDate);
+        if (isNaN(deletedFrom.getTime())) {
+          throw new Error("Invalid deletedFromDate format");
+        }
+      } catch (error) {
+        console.error(
+          `Invalid deletedFromDate for bill ${bill.id}: ${bill.deletedFromDate}`
+        );
+        // Decide whether to skip or handle differently
+        break;
+      }
+
+      if (!isBefore(currentDate, deletedFrom)) {
+        break;
+      }
     }
 
     const occurrenceDate = formatISO(currentDate, { representation: "date" });
 
     // Check if the occurrence already exists
-    const existing = await queryDB(
-      ctx,
-      `SELECT * FROM BillOccurrence WHERE bill_id = ? AND due_date = ? AND deleted = 0`,
-      [bill.id, occurrenceDate]
-    );
+    let existing;
+    try {
+      existing = await queryDB(
+        ctx,
+        `SELECT * FROM BillOccurrence WHERE bill_id = ? AND due_date = ? AND deleted = 0`,
+        [bill.id, occurrenceDate]
+      );
+    } catch (error) {
+      console.error(
+        `Error checking existing occurrences for bill_id ${bill.id} on ${occurrenceDate}:`,
+        error
+      );
+      // Decide whether to continue or abort
+      break;
+    }
 
     if (existing.results.length === 0) {
       const occurrence: BillOccurrence = {
@@ -136,7 +179,7 @@ async function generateOccurrences(
  * Bills Routes
  */
 
-// POST /api/bills - Create a new bill
+// POST /api/bills - Create a new bill with error handling
 app.post("/api/bills", async (c) => {
   try {
     const { name, amount, dueDate, recurrence } = await c.req.json<{
@@ -155,6 +198,12 @@ app.post("/api/bills", async (c) => {
     const validRecurrences = ["none", "weekly", "monthly", "yearly"];
     if (!validRecurrences.includes(recurrence)) {
       return c.json({ error: "Invalid recurrence value" }, 400);
+    }
+
+    // Validate dueDate format
+    const parsedDueDate = parseISO(dueDate);
+    if (isNaN(parsedDueDate.getTime())) {
+      return c.json({ error: "Invalid dueDate format. Use YYYY-MM-DD." }, 400);
     }
 
     const billId = uuidv4(); // Unique identifier for the bill series
@@ -218,7 +267,8 @@ app.post("/api/bills", async (c) => {
             `Duplicate occurrence for bill_id ${occ.bill_id} on ${occ.due_date} skipped.`
           );
         } else {
-          throw err; // Re-throw unexpected errors
+          console.error("Error inserting occurrence:", err);
+          throw new Error("Failed to insert bill occurrence.");
         }
       }
     }
@@ -229,11 +279,16 @@ app.post("/api/bills", async (c) => {
     if (error.message.includes("unique_bill_due_date")) {
       return c.json({ error: "Duplicate bill occurrence detected." }, 409);
     }
-    return c.json({ error: "Failed to create bill" }, 500);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to create bill",
+      },
+      500
+    );
   }
 });
 
-// GET /api/bills - Retrieve bill occurrences within a date range
+// GET /api/bills - Retrieve bill occurrences within a date range with error handling
 app.get("/api/bills", async (c) => {
   try {
     const month = c.req.query("month"); // Expected format: 'YYYY-MM'
@@ -246,8 +301,16 @@ app.get("/api/bills", async (c) => {
     }
 
     // Parse the month parameter
-    const [year, monthNumber] = month.split("-").map(Number);
-    if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
+    const [yearStr, monthStr] = month.split("-");
+    const year = parseInt(yearStr);
+    const monthNumber = parseInt(monthStr);
+
+    if (
+      isNaN(year) ||
+      isNaN(monthNumber) ||
+      monthNumber < 1 ||
+      monthNumber > 12
+    ) {
       return c.json({ error: "Invalid month format. Use YYYY-MM." }, 400);
     }
 
@@ -257,6 +320,8 @@ app.get("/api/bills", async (c) => {
     const endDate = formatISO(new Date(year, monthNumber, 0), {
       representation: "date",
     }); // Last day of the month
+
+    console.log(`Fetching bills from ${startDate} to ${endDate}`);
 
     // Retrieve existing occurrences within the date range
     const existingOccurrencesResult = await queryDB(
@@ -287,7 +352,7 @@ app.get("/api/bills", async (c) => {
       );
 
       if (!hasOccurrence) {
-        // Generate occurrences up to the specified month
+        // Calculate the number of months between bill.dueDate and target month
         const billDueDate = parseISO(bill.dueDate);
         const targetDate = new Date(year, monthNumber - 1, 1);
         const monthsDifference =
@@ -298,6 +363,7 @@ app.get("/api/bills", async (c) => {
           continue; // Skip bills that start after the target month
         }
 
+        // Generate occurrences up to the target month
         const generatedOccurrences = await generateOccurrences(
           bill,
           monthsDifference + 1,
@@ -311,6 +377,10 @@ app.get("/api/bills", async (c) => {
         }
       }
     }
+
+    console.log(
+      `Generating ${occurrencesToInsert.length} new occurrences for month ${month}`
+    );
 
     // Insert new occurrences into the BillOccurrence table
     if (occurrencesToInsert.length > 0) {
@@ -341,7 +411,9 @@ app.get("/api/bills", async (c) => {
               `Duplicate occurrence for bill_id ${occ.bill_id} on ${occ.due_date} skipped.`
             );
           } else {
-            throw err; // Re-throw unexpected errors
+            console.error("Error inserting occurrence:", err);
+            // Decide whether to continue or abort
+            throw new Error("Failed to insert bill occurrences.");
           }
         }
       }
@@ -357,14 +429,23 @@ app.get("/api/bills", async (c) => {
     );
     const finalOccurrences = finalOccurrencesResult.results as BillOccurrence[];
 
+    console.log(
+      `Returning ${finalOccurrences.length} occurrences for month ${month}`
+    );
+
     return c.json(finalOccurrences);
   } catch (error: any) {
     console.error("Error fetching bills:", error);
-    return c.json({ error: "Failed to fetch bills" }, 500);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to fetch bills",
+      },
+      500
+    );
   }
 });
 
-// PUT /api/bills/:id - Update a bill occurrence or future occurrences
+// PUT /api/bills/:id - Update a bill occurrence or future occurrences with error handling
 app.put("/api/bills/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -433,7 +514,7 @@ app.put("/api/bills/:id", async (c) => {
         .bind(...paramsUpdate)
         .run();
     } else if (updateOption === "future") {
-      // **Prevent updating due_date when updating future occurrences**
+      // Prevent updating due_date when updating future occurrences
       if (dueDate !== undefined && dueDate !== existingOccurrence.due_date) {
         return c.json(
           {
@@ -462,7 +543,7 @@ app.put("/api/bills/:id", async (c) => {
         )
         .run();
 
-      // **Set deletedFromDate to the day after due_date**
+      // Set deletedFromDate to the day after due_date
       const newDeletedFromDate = formatISO(
         addDays(parseISO(existingOccurrence.due_date), 1),
         { representation: "date" }
@@ -490,11 +571,19 @@ app.put("/api/bills/:id", async (c) => {
         409
       );
     }
-    return c.json({ error: "Failed to update bill occurrence" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update bill occurrence",
+      },
+      500
+    );
   }
 });
 
-// DELETE /api/bills/:id - Delete a bill occurrence with recurrence handling
+// DELETE /api/bills/:id - Delete a bill occurrence with recurrence handling and error handling
 app.delete("/api/bills/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -545,7 +634,7 @@ app.delete("/api/bills/:id", async (c) => {
         .bind(existingOccurrence.bill_id, existingOccurrence.due_date)
         .run();
 
-      // **Set deletedFromDate to the day after due_date**
+      // Set deletedFromDate to the day after due_date
       const newDeletedFromDate = formatISO(
         addDays(parseISO(existingOccurrence.due_date), 1),
         { representation: "date" }
@@ -566,7 +655,15 @@ app.delete("/api/bills/:id", async (c) => {
     }
   } catch (error: any) {
     console.error("Error deleting bill occurrence:", error);
-    return c.json({ error: "Failed to delete bill occurrence" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete bill occurrence",
+      },
+      500
+    );
   }
 });
 
@@ -574,18 +671,24 @@ app.delete("/api/bills/:id", async (c) => {
  * Paychecks Routes
  */
 
-// GET /api/paychecks - Retrieve all paychecks
+// GET /api/paychecks - Retrieve all paychecks with error handling
 app.get("/api/paychecks", async (c) => {
   try {
     const result = await queryDB(c, "SELECT * FROM Paycheck");
     return c.json(result.results);
   } catch (error: any) {
     console.error("Error fetching paychecks:", error);
-    return c.json({ error: "Failed to fetch paychecks" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to fetch paychecks",
+      },
+      500
+    );
   }
 });
 
-// POST /api/paychecks - Create a new paycheck
+// POST /api/paychecks - Create a new paycheck with error handling
 app.post("/api/paychecks", async (c) => {
   try {
     const { amount, date } = await c.req.json<{
@@ -595,6 +698,12 @@ app.post("/api/paychecks", async (c) => {
 
     if (amount === undefined || !date) {
       return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    // Validate date format
+    const parsedDate = parseISO(date);
+    if (isNaN(parsedDate.getTime())) {
+      return c.json({ error: "Invalid date format. Use YYYY-MM-DD." }, 400);
     }
 
     const newPaycheck: Paycheck = {
@@ -618,11 +727,17 @@ app.post("/api/paychecks", async (c) => {
     );
   } catch (error: any) {
     console.error("Error creating paycheck:", error);
-    return c.json({ error: "Failed to create paycheck" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to create paycheck",
+      },
+      500
+    );
   }
 });
 
-// PUT /api/paychecks/:id - Update a paycheck
+// PUT /api/paychecks/:id - Update a paycheck with error handling
 app.put("/api/paychecks/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -630,6 +745,14 @@ app.put("/api/paychecks/:id", async (c) => {
       amount?: number;
       date?: string;
     }>();
+
+    // Validate date format if provided
+    if (date !== undefined) {
+      const parsedDate = parseISO(date);
+      if (isNaN(parsedDate.getTime())) {
+        return c.json({ error: "Invalid date format. Use YYYY-MM-DD." }, 400);
+      }
+    }
 
     const sql = `
       UPDATE Paycheck
@@ -648,11 +771,17 @@ app.put("/api/paychecks/:id", async (c) => {
     return c.json({ message: "Paycheck updated successfully" });
   } catch (error: any) {
     console.error("Error updating paycheck:", error);
-    return c.json({ error: "Failed to update paycheck" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to update paycheck",
+      },
+      500
+    );
   }
 });
 
-// DELETE /api/paychecks/:id - Delete a paycheck
+// DELETE /api/paychecks/:id - Delete a paycheck with error handling
 app.delete("/api/paychecks/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -669,7 +798,13 @@ app.delete("/api/paychecks/:id", async (c) => {
     return c.json({ message: "Paycheck deleted successfully" });
   } catch (error: any) {
     console.error("Error deleting paycheck:", error);
-    return c.json({ error: "Failed to delete paycheck" }, 500);
+    return c.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to delete paycheck",
+      },
+      500
+    );
   }
 });
 
@@ -677,18 +812,23 @@ app.delete("/api/paychecks/:id", async (c) => {
  * Todos Routes
  */
 
-// GET /api/todos - Retrieve all todos
+// GET /api/todos - Retrieve all todos with error handling
 app.get("/api/todos", async (c) => {
   try {
     const result = await queryDB(c, "SELECT * FROM Todo");
     return c.json(result.results);
   } catch (error: any) {
     console.error("Error fetching todos:", error);
-    return c.json({ error: "Failed to fetch todos" }, 500);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to fetch todos",
+      },
+      500
+    );
   }
 });
 
-// POST /api/todos - Create a new todo
+// POST /api/todos - Create a new todo with error handling
 app.post("/api/todos", async (c) => {
   try {
     const { task, dueDate } = await c.req.json<{
@@ -698,6 +838,12 @@ app.post("/api/todos", async (c) => {
 
     if (!task || !dueDate) {
       return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    // Validate dueDate format
+    const parsedDueDate = parseISO(dueDate);
+    if (isNaN(parsedDueDate.getTime())) {
+      return c.json({ error: "Invalid dueDate format. Use YYYY-MM-DD." }, 400);
     }
 
     const newTodo: Todo = {
@@ -724,11 +870,16 @@ app.post("/api/todos", async (c) => {
     return c.json({ message: "Todo created successfully", todo: newTodo }, 201);
   } catch (error: any) {
     console.error("Error creating todo:", error);
-    return c.json({ error: "Failed to create todo" }, 500);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to create todo",
+      },
+      500
+    );
   }
 });
 
-// PUT /api/todos/:id - Update a todo
+// PUT /api/todos/:id - Update a todo with error handling
 app.put("/api/todos/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -737,6 +888,17 @@ app.put("/api/todos/:id", async (c) => {
       dueDate?: string;
       completed?: boolean;
     }>();
+
+    // Validate dueDate format if provided
+    if (dueDate !== undefined) {
+      const parsedDueDate = parseISO(dueDate);
+      if (isNaN(parsedDueDate.getTime())) {
+        return c.json(
+          { error: "Invalid dueDate format. Use YYYY-MM-DD." },
+          400
+        );
+      }
+    }
 
     let sql = `UPDATE Todo SET `;
     const updates: string[] = [];
@@ -774,16 +936,14 @@ app.put("/api/todos/:id", async (c) => {
     console.error("Error updating todo:", error);
     return c.json(
       {
-        error: `Failed to update todo: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        error: error instanceof Error ? error.message : "Failed to update todo",
       },
       500
     );
   }
 });
 
-// DELETE /api/todos/:id - Delete a todo
+// DELETE /api/todos/:id - Delete a todo with error handling
 app.delete("/api/todos/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -800,7 +960,12 @@ app.delete("/api/todos/:id", async (c) => {
     return c.json({ message: "Todo deleted successfully" });
   } catch (error: any) {
     console.error("Error deleting todo:", error);
-    return c.json({ error: "Failed to delete todo" }, 500);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to delete todo",
+      },
+      500
+    );
   }
 });
 
